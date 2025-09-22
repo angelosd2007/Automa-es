@@ -1,0 +1,7 @@
+function doGet() {
+  // Esta linha de código instrui o Apps Script a pegar o arquivo 'index.html',
+  // processá-lo e exibi-lo no navegador do usuário.
+  return HtmlService.createHtmlOutputFromFile('index')
+    .setTitle("Gerador de DDC")
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
