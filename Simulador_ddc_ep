@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador de Documento Descritivo de Crédito (DDC) - Neon</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            #ddc-document, #ddc-document * {
+                visibility: visible;
+            }
+            #ddc-document {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                font-size: 10px;
+            }
+            .no-print {
+                display: none;
+            }
+            #ddc-document table {
+                font-size: 9px;
+            }
+            #ddc-document th, #ddc-document td {
+                padding: 4px 6px;
+            }
+            #ddc-document h2 {
+                font-size: 16px;
+            }
+            #ddc-document h3 {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8 no-print">
+            <h1 class="text-3xl font-bold text-blue-600">Gerador de Documento Descritivo de Crédito (DDC)</h1>
+            <p class="text-gray-600 mt-2">Preencha os campos abaixo para gerar o documento conforme a resolução do Banco Central.</p>
+        </header>
+        <!-- Formulário de Entrada de Dados -->
+        <div class="max-w-4xl mx-auto bg-white p-8 rounded-2xl shadow-lg no-print">
+            <form id="ddc-form">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="col-span-1">
+                        <label for="numeroContrato" class="block text-sm font-medium text-gray-700">I - Número do Contrato</label>
+                        <input type="text" id="numeroContrato" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: 123456" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="modalidade" class="block text-sm font-medium text-gray-700">II - Modalidade</label>
+                        <input type="text" id="modalidade" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: Empréstimo Pessoal" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="taxaJurosAnual" class="block text-sm font-medium text-gray-700">III - Taxa de Juros Anual (%)</label>
+                        <input type="number" id="taxaJurosAnual" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: 19.99" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="sistemaPagamento" class="block text-sm font-medium text-gray-700">IV - Sistema de Pagamento</label>
+                        <input type="text" id="sistemaPagamento" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: Tabela Price" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="prazoTotal" class="block text-sm font-medium text-gray-700">V - Prazo Total (meses)</label>
+                        <input type="number" id="prazoTotal" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: 12" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="prazoRemanescente" class="block text-sm font-medium text-gray-700">VI - Prazo Remanescente (meses)</label>
+                        <input type="number" id="prazoRemanescente" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: 8" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="valorPrestacao" class="block text-sm font-medium text-gray-700">VII - Valor Original da Prestação</label>
+                        <input type="number" id="valorPrestacao" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Ex: 554.93" required>
+                    </div>
+                    <div class="col-span-1">
+                        <label for="proximoVencimento" class="block text-sm font-medium text-gray-700">VIII - Data do Próximo Vencimento</label>
+                        <input type="date" id="proximoVencimento" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                    </div>
+                    <div class="col-span-1 md:col-span-2">
+                        <label for="ultimoVencimento" class="block text-sm font-medium text-gray-700">IX - Data do Último Vencimento da Operação</label>
+                        <input type="date" id="ultimoVencimento" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                    </div>
+                </div>
+                <div class="col-span-1 md:col-span-2 text-center mt-6">
+                    <button type="submit" class="w-full md:w-1/2 bg-blue-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-300">
+                        Gerar Documento
+                    </button>
+                </div>
+            </form>
+        </div>
+        <!-- Seção do Documento Gerado -->
+        <div id="ddc-result" class="hidden mt-10">
+            <div id="ddc-document" class="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg border border-gray-200">
+                <!-- Conteúdo do DDC será inserido aqui via JS -->
+            </div>
+            <div class="max-w-4xl mx-auto mt-6 text-center no-print">
+                <button onclick="window.print()" class="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all duration-300">
+                    Imprimir / Salvar PDF
+                </button>
+            </div>
+        </div>
+    </div>
+    <script>
+        // --- Elementos do DOM ---
+        const ddcForm = document.getElementById('ddc-form');
+        const ddcResult = document.getElementById('ddc-result');
+        const ddcDocument = document.getElementById('ddc-document');
+        // --- Funções de Formatação ---
+        const formatCurrency = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        const formatDate = (date) => {
+            if (!date) return 'N/A';
+            if (typeof date === 'string') {
+                const [year, month, day] = date.split('-');
+                return `${day}/${month}/${year}`;
+            }
+            let day = String(date.getDate()).padStart(2, '0');
+            let month = String(date.getMonth() + 1).padStart(2, '0');
+            let year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        };
+        // --- Funções utilitárias para datas e cálculos 30/360 ---
+        function dayCount30_360(d1, d2) {
+            const d1d = Math.min(30, d1.getDate());
+            const d2d = Math.min(30, d2.getDate());
+            return (d2.getFullYear() - d1.getFullYear()) * 360
+                + (d2.getMonth() - d1.getMonth()) * 30
+                + (d2d - d1d);
+        }
+        function makeDateFromISO(isoStr) {
+            const [yy, mm, dd] = isoStr.split('-').map(Number);
+            return new Date(yy, mm - 1, dd);
+        }
+        // --- Event Listener Principal ---
+        ddcForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            // --- Coleta de Dados do Formulário ---
+            const numeroContrato = document.getElementById('numeroContrato').value;
+            const modalidade = document.getElementById('modalidade').value;
+            const taxaJurosAnual = parseFloat(document.getElementById('taxaJurosAnual').value);
+            const prazoTotal = parseInt(document.getElementById('prazoTotal').value);
+            const prazoRemanescente = parseInt(document.getElementById('prazoRemanescente').value);
+            const sistemaPagamento = document.getElementById('sistemaPagamento').value;
+            const valorPrestacaoOriginal = parseFloat(document.getElementById('valorPrestacao').value);
+            const proximoVencimento = document.getElementById('proximoVencimento').value;
+            const ultimoVencimento = document.getElementById('ultimoVencimento').value;
+            // --- Configuração de encargos de atraso ---
+            const multaPercent = 0.02;
+            const moraMesPercent = 0.01;
+            const aplicarJurosRemuneratoriosNoAtraso = true;
+            // --- Conversão das taxas ---
+            const iAnual = taxaJurosAnual / 100;
+            const iMensal = Math.pow(1 + iAnual, 1 / 12) - 1;
+            const iDiaria = Math.pow(1 + iMensal, 1 / 30) - 1;
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            const dataBaseVencimento = makeDateFromISO(proximoVencimento);
+            dataBaseVencimento.setHours(0, 0, 0, 0);
+            const parcelasCalculadas = [];
+            let valorLiquidacao = 0;
+            for (let i = 0; i < prazoRemanescente; i++) {
+                const vencimentoParcela = new Date(dataBaseVencimento);
+                vencimentoParcela.setMonth(dataBaseVencimento.getMonth() + i);
+                vencimentoParcela.setHours(0, 0, 0, 0);
+                const diasConv = dayCount30_360(hoje, vencimentoParcela);
+                let valorAtualizadoParcela, encargoOuDesconto, status;
+                if (diasConv > 0) {
+                    const fator = Math.pow(1 + iDiaria, diasConv);
+                    valorAtualizadoParcela = valorPrestacaoOriginal / fator;
+                    encargoOuDesconto = valorAtualizadoParcela - valorPrestacaoOriginal;
+                    status = 'Em Dia';
+                } else if (diasConv < 0) {
+                    const diasAtraso = -diasConv;
+                    const valorComRem = aplicarJurosRemuneratoriosNoAtraso ?
+                        valorPrestacaoOriginal * Math.pow(1 + iDiaria, diasAtraso)
+                        : valorPrestacaoOriginal;
+                    const multa = valorPrestacaoOriginal * multaPercent;
+                    const jurosMora = valorPrestacaoOriginal * (moraMesPercent / 30) * diasAtraso;
+                    valorAtualizadoParcela = valorComRem + multa + jurosMora;
+                    encargoOuDesconto = valorAtualizadoParcela - valorPrestacaoOriginal;
+                    status = 'Em Atraso';
+                } else {
+                    valorAtualizadoParcela = valorPrestacaoOriginal;
+                    encargoOuDesconto = 0;
+                    status = 'Hoje';
+                }
+                valorLiquidacao += valorAtualizadoParcela;
+                parcelasCalculadas.push({
+                    numero: (prazoTotal - prazoRemanescente) + 1 + i,
+                    vencimento: vencimentoParcela,
+                    valorAtualizado: valorAtualizadoParcela,
+                    original: valorPrestacaoOriginal,
+                    encargoOuDesconto,
+                    status
+                });
+            }
+            let saldoAtual = valorLiquidacao;
+            const evolucaoSaldo = parcelasCalculadas.map(p => {
+                saldoAtual -= p.valorAtualizado;
+                return {
+                    parcela: p.numero,
+                    vencimento: formatDate(p.vencimento),
+                    status: p.status,
+                    valorAtualizado: Number(p.valorAtualizado).toFixed(2),
+                    atualizacoes: Number(p.encargoOuDesconto).toFixed(2),
+                    valorOriginal: Number(p.original).toFixed(2),
+                    saldoDevedor: (saldoAtual > 0 ? saldoAtual : 0).toFixed(2)
+                };
+            });
+            const evolucaoRows = evolucaoSaldo.map(item => {
+                const statusClass = item.status === 'Em Atraso' ? 'text-red-600 font-semibold' :
+                    (item.status === 'Hoje' ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold');
+                return `
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="py-2 px-4 text-center">${item.parcela}</td>
+                        <td class="py-2 px-4 text-center">${item.vencimento}</td>
+                        <td class="py-2 px-4 text-center ${statusClass}">${item.status}</td>
+                        <td class="py-2 px-4 text-right font-semibold">${formatCurrency(Number(item.valorAtualizado))}</td>
+                        <td class="py-2 px-4 text-right">${formatCurrency(Number(item.atualizacoes))}</td>
+                        <td class="py-2 px-4 text-right">${formatCurrency(Number(item.valorOriginal))}</td>
+                        <td class="py-2 px-4 text-right">${formatCurrency(Number(item.saldoDevedor))}</td>
+                    </tr>
+                `;
+            }).join('');
+            ddcDocument.innerHTML = `
+                <div class="text-center mb-8">
+                    <h2 class="text-2xl font-bold text-gray-800">Documento Descritivo de Crédito (DDC)</h2>
+                    <p class="text-sm text-gray-500">Emitido em: ${new Date().toLocaleDateString('pt-BR')}</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                    <div><strong>I - Número do Contrato:</strong> ${numeroContrato}</div>
+                    <div><strong>II - Saldo Devedor Atualizado:</strong> <span class="font-semibold">${formatCurrency(valorLiquidacao)}</span></div>
+                    <div><strong>IV - Modalidade:</strong> ${modalidade}</div>
+                    <div><strong>V - Taxa de Juros Anual:</strong> ${taxaJurosAnual.toFixed(2)}%</div>
+                    <div><strong>VI - Taxa de Juros Mensal:</strong> ${(iMensal*100).toFixed(4)}%</div>
+                    <div><strong>VII - Prazo Total:</strong> ${prazoTotal} meses</div>
+                    <div><strong>VIII - Prazo Remanescente:</strong> ${prazoRemanescente} meses</div>
+                    <div><strong>IX - Sistema de Pagamento:</strong> ${sistemaPagamento}</div>
+                    <div><strong>X - Valor Original da Prestação:</strong> ${formatCurrency(valorPrestacaoOriginal)}</div>
+                    <div class="md:col-span-2"><strong>XI - Data do Último Vencimento:</strong> ${formatDate(ultimoVencimento)}</div>
+                </div>
+                <hr class="my-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Valor para Liquidação Antecipada</h3>
+                    <p class="text-2xl font-bold text-blue-600">${formatCurrency(valorLiquidacao)}</p>
+                    <p class="text-xs text-gray-500 mt-1">Este valor representa a soma das parcelas remanescentes (trazidas a valor presente), incluindo atualização dos vencidos, conforme regulação vigente (base 30/360).</p>
+                </div>
+                <hr class="my-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-700 mb-4">III - Demonstrativo da Evolução do Saldo Devedor (Parcelas Remanescentes)</h3>
+                    <div class="overflow-x-auto rounded-lg border">
+                        <table class="w-full text-sm text-left text-gray-600">
+                            <thead class="bg-gray-100 text-xs uppercase">
+                                <tr>
+                                    <th class="py-3 px-4 text-center">Nº Parcela</th>
+                                    <th class="py-3 px-4 text-center">Vencimento</th>
+                                    <th class="py-3 px-4 text-center">Status</th>
+                                    <th class="py-3 px-4 text-right">Valor Atualizado</th>
+                                    <th class="py-3 px-4 text-right">Atualizações (desc./enc.)</th>
+                                    <th class="py-3 px-4 text-right">Valor Original</th>
+                                    <th class="py-3 px-4 text-right">Saldo Devedor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${evolucaoRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            ddcResult.classList.remove('hidden');
+            ddcResult.scrollIntoView({ behavior: 'smooth' });
+        });
+    </script>
+</body>
+</html>
