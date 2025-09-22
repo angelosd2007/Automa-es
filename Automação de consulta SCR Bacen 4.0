@@ -1,0 +1,125 @@
+# Automação de consulta SCR Bacen 4.0
+from selenium import webdriver
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import os
+
+from datetime import datetime, timedelta
+
+import getpass
+import time
+
+# Pede usuário e senha do BACEN
+
+user = input('Digite seu usuário do SCR/BC: ').strip()
+senha = getpass.getpass('Digite sua senha de acesso ao SCR/BC: ').strip()
+
+# Function para produzir as datas-base
+def gerar_datas_base(data_str):
+    data = datetime.strptime(data_str, "%m/%Y")
+    datas_base = [data_str]
+
+    for i in range(23):
+
+        data = data - timedelta(days=1)
+        
+        while data.day != 1:
+            data = data - timedelta(days=1)
+        datas_base.append(data.strftime("%m/%Y"))
+    
+    return datas_base
+
+tipo_cliente = str(input('Digite 1 para PF ou 2 para PJ: '))
+
+cliente = input('Digite o cpf/cnpj do cliente com ou sem pontuação: ')
+
+cliente = cliente.replace(".","").replace("-","")
+
+data_str = input("Insira a data base mais nova disponível para consulta no SCR no formato mm/AAAA: ")
+
+datas_base = gerar_datas_base(data_str)
+
+# Inicialize o driver do navegador (neste caso, Chrome)
+
+chrome_options = Options()
+
+chrome_options.add_argument("--start-fullscreen")
+
+driver = webdriver.Chrome()
+# Logando no SCR
+driver.get('https://scr.bcb.gov.br/scr/consulta')
+
+time.sleep(1)
+
+username_field = driver.find_element(By.ID, 'userNameInput')
+username_field.send_keys(user)
+
+password_field = driver.find_element(By.ID, 'passwordInput')
+password_field.send_keys(senha)
+
+button_login = driver.find_element(By.ID, 'submitButton')
+button_login.click()
+
+for data in datas_base:
+    print(data) 
+    # Utilizando WebDriverWait para garantir que o campo CNPJ/CPF Cliente esteja presente
+    try:
+        # Preencha o campo CNPJ/CPF Cliente
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.ID, 'codigoCliente'))
+        )
+        cpf_field = driver.find_element(By.ID, 'codigoCliente')
+        cpf_field.send_keys(cliente)
+
+        # Selecione o tipo de cliente
+        select_field = Select(driver.find_element(By.ID, 'tipoCliente'))
+        if tipo_cliente == "1":
+            select_field.select_by_visible_text('Pessoa Fisica com CPF')
+        elif tipo_cliente == "2":
+            select_field.select_by_visible_text('Pessoa Juridica com CNPJ')
+        else:
+            print("Tipo inválido!")
+            break
+
+        # Selecione a Data-base
+        select_field = Select(driver.find_element(By.NAME, 'codigoDataBase'))
+        select_field.select_by_visible_text(data)
+
+        # Marque a caixa de autorização
+        checkbox = driver.find_element(By.NAME, 'autorizacao')
+        if not checkbox.is_selected():
+            checkbox.click()
+
+        # Clique no botão Consultar Dados Enviados pela Própria Instituição
+        button = driver.find_element(By.NAME, 'botao1')
+        button.click()
+
+        data_formatada = data.replace("/", "_")
+        if not os.path.exists(cliente):
+            os.makedirs(cliente)
+    except Exception as e:
+        print(f"Ocorreu um erro ao processar a data {data}: {e}")
+        break  # Ou continue com a lógica necessária.
+
+    try:
+        elemento = EC.text_to_be_present_in_element((By.CSS_SELECTOR, "td.aesquerda"), "Não foram encontrados dados para o cliente, para os critérios abaixo relacionados")
+        if elemento:
+            time.sleep(0.5)
+            sufixo = '_financeira' if system == 'NF' else '_pagamentos'
+            driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}.png')
+            driver.find_element(By.NAME,'botaoVoltar').click()
+    
+    except:
+        time.sleep(0.5)
+        link = driver.find_element(By.LINK_TEXT, 'Histórico das datas-base')
+        link.click()
+        time.sleep(0.5)
+        sufixo = '_financeira' if system == 'NF' else '_pagamentos'
+        driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}.png')
+        break
+        # driver.find_element(By.NAME,'voltar').click()
+
+input("Aperte enter")
