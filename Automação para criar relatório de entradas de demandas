@@ -1,0 +1,254 @@
+# análise de performance
+# ETAPAS
+# 1 BAIXAR OS CASOS ENCERRADOS BACEN DESDE 01/01/2025 E RENOMEAR COMO Encerradas Bacen.xlsx
+# 2 BAIXAR O RELATÓRIO GLOBAL IB DESDE 01/01/2025 ATÉ DATA ATUAL E RENOMEAR COMO Relatório GLOBAL - Todas.xlsx
+# 4 BAIXAR A ABA DE CADASTRO E RENOMEAR COMO Relatório Cadastro.xlsx
+# importando bibliotecas
+# 
+import pandas as pd
+import holidays
+from datetime import date, timedelta
+import numpy as np
+# 
+# Subindo os dfs
+bacen_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES FIXAS\Relatório Bacen BASE - 01_01_2022_31_12_2024.xlsx', header=2)
+feriados_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES FIXAS\feriados.xlsx')
+global_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES FIXAS\Relatório GLOBAL - BASE - 01_01_2022_31_12_2024.xlsx', header=3)
+global_new_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES MÓVEIS\Relatório GLOBAL - Todas.xlsx', header=3)
+cadastro_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES MÓVEIS\Relatório Cadastro.xlsx')
+bacen_new_df = pd.read_excel(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\BASES MÓVEIS\Encerradas Bacen.xlsx', header=2)
+# juntando os relatórios GLOBAL & BACEN de acordo com as novas bases baixadas
+global_df = pd.concat([global_df, global_new_df])
+bacen_df = pd.concat([bacen_df, bacen_new_df])
+# 
+# Tratamento de nomes para garantir padronização dos campos
+cadastro_df.columns = cadastro_df.columns.str.strip().str.lower()
+bacen_df.columns = bacen_df.columns.str.strip().str.lower()
+global_df.columns = global_df.columns.str.strip().str.lower()
+feriados_df.columns = feriados_df.columns.str.strip().str.lower()
+# Renomeado colunas [cód interno e data conclusão]
+# 
+global_df = global_df.rename(columns={'cód interno': 'cod interno', 'número protocolo' : 'rdr',
+                                      'data conclusão': 'data conclusao', 'conclusão resp': 'conclusao resp',
+                                      'demandante direto - nome' : 'nome cliente', 'demandante direto - tipo pessoa fiscal' : 'tipo pessoa fiscal',
+                                      'demandante direto - telefone 1' : 'telefone', 'demandante direto - tipo entidade' : 'tipo entidade',
+                                      'demandante direto - id fiscal' : 'cpf', 'demandante direto - email 1' : 'email',
+                                      'ocorrência - cód interno' : 'inc'})
+# Separando colunas de interesse em Global
+global_df = global_df[['canal de entrada', 'tipo', 'status', 'nome cliente', 'tipo pessoa fiscal',
+'telefone', 'tipo entidade', 'cpf', 'email', 'cod interno', 'rdr', 'inc', 'identificador', 
+'ocorrência - descrição', 'descrição', 'catálogo - motivos', 'data recebida', 'prazo resposta',
+'data conclusao', 'conclusao resp', 'progresso', 'data reabertura', 'data conclusão reabertura']]
+# Removendo duplicadas relatório global e BCEN se houver
+global_df = global_df.drop_duplicates('cod interno')
+# 
+bacen_df = bacen_df.drop_duplicates('número')
+# Transformando as colunas de data
+# 
+global_df['data recebida'] = pd.to_datetime(global_df['data recebida'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+global_df['prazo resposta'] = pd.to_datetime(global_df['prazo resposta'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+global_df['data conclusao'] = pd.to_datetime(global_df['data conclusao'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+global_df['data reabertura'] = pd.to_datetime(global_df['data reabertura'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+global_df['data conclusão reabertura'] = pd.to_datetime(global_df['data conclusão reabertura'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+bacen_df['disponibilização'] = pd.to_datetime(bacen_df['disponibilização'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+bacen_df['data da resposta'] = pd.to_datetime(bacen_df['data da resposta'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+bacen_df['data do encerramento'] = pd.to_datetime(bacen_df['data do encerramento'], errors='coerce', dayfirst=True, format='%d/%m/%Y')
+# removendo as horas
+feriados_df['data'] = feriados_df['data'].dt.normalize()
+global_df['data recebida'] = global_df['data recebida'].dt.normalize()
+global_df['prazo resposta'] = global_df['prazo resposta'].dt.normalize()
+global_df['data conclusao'] = global_df['data conclusao'].dt.normalize()
+global_df['data reabertura'] = global_df['data reabertura'].dt.normalize()
+global_df['data conclusão reabertura'] = global_df['data conclusão reabertura'].dt.normalize()
+bacen_df['disponibilização'] = bacen_df['disponibilização'].dt.normalize()
+bacen_df['data da resposta'] = bacen_df['data da resposta'].dt.normalize()
+bacen_df['data do encerramento'] = bacen_df['data do encerramento'].dt.normalize()
+# Extraindo o ano trimestre e mês de recebida e conclusão
+global_df['ano recebida'] = global_df['data recebida'].dt.year
+global_df['tri recebida'] = global_df['data recebida'].dt.quarter
+global_df['mes recebida'] = global_df['data recebida'].dt.month
+global_df['ano conclusao'] = global_df['data conclusao'].dt.year
+global_df['tri conclusao'] = global_df['data conclusao'].dt.quarter
+global_df['mes conclusao'] = global_df['data conclusao'].dt.month
+global_df['ano conclusao'] = global_df['ano conclusao'].fillna(0).astype(int)
+global_df['tri conclusao'] = global_df['tri conclusao'].fillna(0).astype(int)
+global_df['mes conclusao'] = global_df['mes conclusao'].fillna(0).astype(int)
+# adicionando ano/tri & ano/mes necessárias
+global_df['tri/ano recebida'] = global_df['tri recebida'].astype(int).astype(str).str.zfill(2) + '/' + global_df['ano recebida'].astype(str)
+global_df['tri/ano conclusao'] = global_df['tri conclusao'].astype(int).astype(str).str.zfill(2) + '/' + global_df['ano conclusao'].astype(str)
+global_df['mes/ano recebida'] = global_df['mes recebida'].astype(int).astype(str).str.zfill(2) + '/' + global_df['ano recebida'].astype(str)
+global_df['mes/ano conclusao'] = global_df['mes conclusao'].astype(int).astype(str).str.zfill(2) + '/' + global_df['ano conclusao'].astype(str)
+# teste com a coluna de 'tri/ano recebida' para ficar 1 tri 23
+global_df['tri_ano_recebida_formatado'] = global_df['tri/ano recebida'].apply(lambda x: f"{int(x[:2])} tri {x[-2:]}")
+global_df['tri_ano_conclusao_formatado'] = global_df['tri/ano conclusao'].apply(lambda x: f"{int(x[:2])} tri {x[-2:]}")
+
+# criando uma coluna de ordenação dos trimestres:
+def gerar_ordem(tri_ano):
+   tri, ano = tri_ano.split('/')
+   return int(ano) * 10 + int(tri)
+global_df['ordem_cronologica'] = global_df['tri/ano recebida'].apply(gerar_ordem)
+
+# Adicionando dias úteis ao dmd_df & global_df
+def proximo_dia_util(data_base, feriados_np):
+    proximo = data_base + np.timedelta64(1, 'D')
+    while True:
+        # weekday: segunda=0, sexta=4; >=5 é sábado ou domingo
+        if proximo.astype('datetime64[D]').astype(object).weekday() < 5 and proximo not in feriados_np:
+            return proximo
+        proximo += np.timedelta64(1, 'D')
+
+def conta_dias_uteis_corrigido(global_df, feriados_df, col_recebida='data recebida', col_conclusao='data conclusao'):
+    feriados_np = pd.to_datetime(feriados_df['data']).dt.normalize().values.astype('datetime64[D]')
+
+    def calcula(row):
+        recebida = row[col_recebida]
+        conclusao = row[col_conclusao]
+        if pd.isna(recebida) or pd.isna(conclusao):
+            return pd.NA
+
+        recebida_d = np.datetime64(pd.to_datetime(recebida).date(), 'D')
+        conclusao_d = np.datetime64(pd.to_datetime(conclusao).date(), 'D')
+
+        # Encontrar D1: o primeiro útil estritamente após o recebimento
+        d1 = proximo_dia_util(recebida_d, feriados_np)
+
+        if conclusao_d < d1:
+            return 0
+
+        # fim_exclusivo para contar inclusive o dia da conclusão
+        fim_exclusivo = conclusao_d + np.timedelta64(1, 'D')
+        dias = int(np.busday_count(d1, fim_exclusivo, holidays=feriados_np))
+        return dias
+
+    global_df['dias_uteis'] = global_df.apply(calcula, axis=1).astype("Int64")
+    return global_df
+
+# Exemplo de uso:
+global_df = conta_dias_uteis_corrigido(global_df, feriados_df, 'data recebida', 'data conclusao')
+
+# Criando uma coluna cópia de dias úteis com formato texto:
+global_df['dias_uteis_texto'] = global_df['dias_uteis'].astype(str)
+# 
+# TREBALHANDO COM OS CASOS DE CADASTRO
+# filtrando colunas do relatório cadastro
+cadastro_df = cadastro_df[['canal entrada', 'analista', 
+                           'código interno', 'identificador', 'recebida', 
+                           'data sistema', 
+                           'duração do cadastro minutos']]
+# criando coluna de ano e mês e adicionando zero para as colunas que não tem data
+cadastro_df['mes'] = cadastro_df['data sistema'].dt.month
+cadastro_df['tri'] = cadastro_df['data sistema'].dt.quarter
+cadastro_df['ano'] = cadastro_df['data sistema'].dt.year
+cadastro_df['mes'] = cadastro_df['mes'].fillna(0).astype(int)
+cadastro_df['ano'] = cadastro_df['ano'].fillna(0).astype(int)
+cadastro_df['tri'] = cadastro_df['tri'].fillna(0).astype(int)
+cadastro_df['mes/ano'] = cadastro_df['mes'].astype(str) + '/' + cadastro_df['ano'].astype(str)
+
+# renomeando colunas de cadastro
+# 
+cadastro_df = cadastro_df.rename(columns={'código interno': 'cod interno'})
+# Fazendo mapeamento pegando o REQ do cadastro e atibuíndo ao relatório BACEN
+# Remove duplicados antes dos mapas
+cadastro_df = cadastro_df.drop_duplicates('cod interno')
+# Pegando as colunas de interesse na Base do BACEN procedentes
+bacen_df = bacen_df[['número', 'disponibilização', 
+       'data da resposta', 'data do encerramento', 'data do ranking',
+       'motivo(s)', 'situação', 'demandante', 'cpf/cnpj']]
+# renomeando coluna 'número' na base do Bacen para 'rdr' para fazer o merge com cadastro 
+bacen_df = bacen_df.rename(columns={'número': 'rdr'})
+#  padronizado a coluna rdr
+global_df['rdr'] = global_df['rdr'].astype('Int64')
+# Padroniza cod interno (string, strip, maiúsculo)
+for df in [bacen_df, global_df]:
+    df['rdr'] = df['rdr'].astype(str).str.strip().str.upper()
+# criando novo DataFrame Global unificado com procedentes
+global_df = pd.merge(
+    left=global_df,                  # DataFrame da esquerda (principal)
+    right=bacen_df[['rdr', 'disponibilização', 
+       'data da resposta', 'data do encerramento', 'data do ranking',
+       'motivo(s)', 'situação', 'demandante', 'cpf/cnpj']], # DataFrame da direita (apenas colunas necessárias)
+    on='rdr',             # Coluna chave para o cruzamento
+    how='left'                      # Mantém todas as linhas de bacen_df
+)
+# 
+# criando colunas de ano mês na data de encerramento BACEN
+global_df['ano encerramento'] = global_df['data do encerramento'].dt.year
+global_df['tri encerramento'] = global_df['data do encerramento'].dt.quarter
+global_df['mes encerramento'] = global_df['data do encerramento'].dt.month
+global_df['ano encerramento'] = global_df['ano encerramento'].fillna(0).astype(int)
+global_df['tri encerramento'] = global_df['tri encerramento'].fillna(0).astype(int)
+global_df['mes encerramento'] = global_df['mes encerramento'].fillna(0).astype(int)
+global_df['tri_ano_encerramento'] = global_df['tri encerramento'].astype(int).astype(str).str.zfill(2) + '/' + global_df['ano encerramento'].astype(str)
+# teste com a coluna de 'tri/ano recebida' para ficar 1 tri 23
+global_df['tri_ano_encerramento'] = global_df['tri_ano_encerramento'].apply(lambda x: f"{int(x[:2])} tri {x[-2:]}")
+
+# ###############################################################
+# ### INÍCIO DO NOVO BLOCO DE CÓDIGO - SOLUÇÃO              ###
+# ###############################################################
+
+# Garante que a coluna de motivos seja do tipo string para evitar erros
+global_df['catálogo - motivos'] = global_df['catálogo - motivos'].astype(str)
+
+# ETAPA 1: Limpeza Inicial
+# Pega apenas o primeiro motivo caso haja múltiplos separados por ';' e remove espaços
+global_df['motivo_limpo'] = global_df['catálogo - motivos'].str.split(';').str[0].str.strip()
+
+# ETAPA 2: Divisão em Níveis
+# Divide a coluna limpa em até 3 partes usando a barra '/'.
+# O parâmetro n=2 garante que a string será dividida no máximo 2 vezes, criando até 3 colunas.
+# Isso atende à regra de ignorar qualquer informação após a terceira barra.
+# O expand=True cria um novo DataFrame com as partes divididas.
+partes = global_df['motivo_limpo'].str.split('/', n=2, expand=True)
+
+# ETAPA 3: Atribuição e Renomeação das Novas Colunas
+# Atribui cada parte extraída para a coluna final correta, removendo espaços extras.
+# Se uma parte não existir para uma determinada linha (ex: só tem 2 níveis), o valor será None (NaN).
+global_df['catalogo_produto'] = partes[0].str.strip()
+global_df['catalogo_motivo'] = partes[1].str.strip()
+global_df['catalogo_submotivo'] = partes[2].str.strip()
+
+# Remove a coluna temporária que não é mais necessária
+global_df = global_df.drop(columns=['motivo_limpo'])
+
+# Opcional: se a regra de negócio exigir que submotivo e motivo não sejam nulos,
+# você pode descomentar a linha abaixo para replicar o comportamento antigo de preenchimento.
+# No entanto, para uma análise de dados mais precisa, ter valores nulos (NaN) é geralmente melhor.
+# global_df['catalogo_motivo'] = global_df['catalogo_motivo'].fillna(global_df['catalogo_produto'])
+# global_df['catalogo_submotivo'] = global_df['catalogo_submotivo'].fillna(global_df['catalogo_motivo'])
+
+# ###############################################################
+# ### FIM DO NOVO BLOCO DE CÓDIGO                             ###
+# ###############################################################
+
+#  fazendo merge 
+# criando novo DataFrame cadastro unificado com assuntos
+cadastro_df = pd.merge(
+    left=cadastro_df,                  # DataFrame da esquerda (principal)
+    right=global_df[['cod interno', 'catalogo_motivo', 
+       'catalogo_submotivo']], # DataFrame da direita (apenas colunas necessárias)
+    on='cod interno',             # Coluna chave para o cruzamento
+    how='left'                      # Mantém todas as linhas de bacen_df
+)
+# 
+# Resetando o index dos dfs
+global_df = global_df.reset_index()
+global_df = global_df.set_index('index')
+feriados_df = feriados_df.reset_index()
+feriados_df = feriados_df.set_index('index')
+cadastro_df = cadastro_df.reset_index()
+cadastro_df = cadastro_df.set_index('index')
+bacen_df = bacen_df.reset_index()
+bacen_df = bacen_df.set_index('index')
+#
+# Tratando o CPF/CNPJ - padronizando:
+# Passo 1: Normalizar o documento (remover pontuação)
+# Renomeamos a nova coluna para refletir que pode ser CPF ou CNPJ
+global_df['cpf'] = global_df['cpf'].astype(str).str.replace(r'[^0-9]', '', regex=True)
+# Corrigir nulos que viraram texto 'nan' e strings vazias que podem ter surgido
+global_df['cpf'].replace(['', 'nan'], np.nan, inplace=True)
+# Padronizar todos os nomes para maiúsculo
+global_df['nome cliente'] = global_df['nome cliente'].str.upper()
+# enviando as bases após tratamento
+global_df.to_csv(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\GLOBAL TRATADO.csv', index=False, encoding='utf-8')
+cadastro_df.to_csv(r'C:\Users\u003985\Documents\Python - automações\Dados\DADOS RELATÓRIO LOOKER - OUVIDORIA\CADASTRO TRATADO.csv', index=False, encoding='utf-8')
+print('Processo concluído com sucesso')
