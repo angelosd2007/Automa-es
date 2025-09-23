@@ -18,11 +18,11 @@ import time
 segunda_rodada = input('É a segunda rodada? (s/n) s para sim ou n para não: ')
 
 # Configurações do caminho
-download_dir = r'C:\Users\u003985\Downloads'
+download_dir = r'C:\Users\u004047\Downloads'
 # %
 # Acessando usuário e senha KeePass
 frase_segura = getpass.getpass("Digite sua senha KeePass: ")
-kp = PyKeePass(r'C:\Users\u003985\Documents\Consulta SCR\senhas.kdbx', password=frase_segura)
+kp = PyKeePass(r'C:\Users\u004047\Documents\Consulta SCR\senhas.kdbx', password=frase_segura)
 
 # Pergunta qual empresa acessar
 empresa = input("Qual empresa deseja acessar? (1 para financeira, 2 para pagamentos): ")
@@ -66,7 +66,7 @@ driver.find_element(By.XPATH, '//*[@id="submitButton"]').click()
 # % condição
 if segunda_rodada == 'n':
     # Carrega a planilha com os Identificadores
-    df = pd.read_excel(r'C:\Users\u003985\Downloads\Lista de Demandas - Demandas - Classificar.xlsx', header=3)
+    df = pd.read_excel(r'C:\Users\u004047\Downloads\Lista de Demandas - Demandas - Classificar.xlsx', header=3)
     # Ajusta a Base para o formato correto:
     df = df[['Status', 'Canal Entrada', 'Tipo', 'Código Interno ', 'Identificador', 'Assunto', 'Descrição', 'Demandante Direto', 'Recebida', 'Data Sistema']]
     # Renomea as Colunas necessárias:
@@ -92,8 +92,8 @@ if segunda_rodada == 'n':
         return texto
 if segunda_rodada == "s":
     # %Carrega a planilha com os Identificadores
-    df = pd.read_excel(r'C:\Users\u003985\Downloads\Lista de Demandas - Demandas - Classificar.xlsx', header=3)
-    df_ant = pd.read_excel(r'C:\Users\u003985\Downloads\classificas_por_IA.xlsx')
+    df = pd.read_excel(r'C:\Users\u004047\Downloads\Lista de Demandas - Demandas - Classificar.xlsx', header=3)
+    df_ant = pd.read_excel(r'C:\Users\u004047\Downloads\classificas_por_IA.xlsx')
     # %
     # Ajusta a Base para o formato correto:
     df = df[['Status', 'Canal Entrada', 'Tipo', 'Código Interno ', 'Identificador', 'Assunto', 'Descrição', 'Demandante Direto', 'Recebida', 'Data Sistema']]
@@ -181,11 +181,11 @@ df_bc = df_bc.drop(columns=['Mensagem DEATI'], axis=1)
 df = pd.concat([df_bc, df_ouv], axis=0)
 # Salvar a base para a IA pegar e analisar
 # Salvar a planilha como "Classificar atualizada"
-df.to_excel(r'C:\Users\u003985\Downloads\IA_classificar_demandas.xlsx', index=False)
+df.to_excel(r'C:\Users\u004047\Downloads\IA_classificar_demandas.xlsx', index=False)
 
 # Caminho do arquivo
-file_path = r'C:\Users\u003985\Downloads\IA_classificar_demandas.xlsx'
-output_file_path = r'C:\Users\u003985\Downloads\classificas_por_IA.xlsx'
+file_path = r'C:\Users\u004047\Downloads\IA_classificar_demandas.xlsx'
+output_file_path = r'C:\Users\u004047\Downloads\classificas_por_IA.xlsx'
 API_TOKEN = "sk-9ff5338c1aad424da8b429b9901bcea4"
 BASE_URL = "https://gepeto.svc.in.devneon.com.br/"
 
