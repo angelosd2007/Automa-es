@@ -1,0 +1,124 @@
+import re
+from pykeepass import PyKeePass
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import getpass
+import pandas as pd
+import numpy as np
+
+# Configurações do caminho
+download_dir = r'C:\Users\u003985\Downloads'
+
+# Acessando usuário e senha KeePass
+frase_segura = getpass.getpass("Digite sua senha KeePass: ")
+kp = PyKeePass(r'C:\Users\u003985\Documents\Consulta SCR\senhas.kdbx', password=frase_segura)
+
+# Pergunta qual empresa acessar
+empresa = input("Qual empresa deseja acessar? (1 para financeira, 2 para pagamentos): ")
+
+# Configurações do navegador
+chrome_options = Options()
+chrome_options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,
+    "download.directory_upgrade": True
+})
+
+# Acessando o site com webdriver
+driver = webdriver.Chrome(options=chrome_options)
+driver.get("https://www3.bcb.gov.br/rdr/consultaDemandaIFView.do?method=consultaDemandaNumeroInicial")
+
+# Aguarda o carregamento completo da página inicial
+WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+
+# Encontra as credenciais
+if empresa == '1':
+    entry = kp.find_entries(title='Neon Financeira Bacen', first=True)
+else:
+    entry = kp.find_entries(title='Nome_da_Entrada_Pagamentos', first=True)
+
+if entry is None:
+    print("Entrada não encontrada no KeePass.")
+    driver.quit()
+    exit()
+
+username = entry.username
+password = entry.password
+
+# Insere o usuário e senha
+driver.find_element(By.XPATH, '//*[@id="userNameInput"]').send_keys(username)
+driver.find_element(By.XPATH, '//*[@id="passwordInput"]').send_keys(password)
+
+# Clica no botão de login
+driver.find_element(By.XPATH, '//*[@id="submitButton"]').click()
+
+# Carrega a planilha com os Identificadores
+df = pd.read_excel(r'C:\Users\u003985\Downloads\df.xlsx')
+df['Descrição'] = None
+df['Mensagem DEATI'] = None
+
+# Função para limpar caracteres inválidos
+def limpar_texto(texto):
+    if texto:
+        texto = re.sub(r'[<>:"/\\|?*]', '', texto)  # Remove caracteres básicos
+        texto = re.sub(r'[\x00-\x1F\x7F-\x9F]', '', texto)  # Remove outros caracteres de controle
+        texto = texto.replace('→', '-')  # Substitui caracteres especiais
+        return texto
+    return texto
+
+# Loop para processar cada demanda
+for index, row in df.iterrows():
+    identificador = row['Identificador']
+
+    # Aguarda a página carregar e o elemento estar presente
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, '//*[@id="idConsulta"]'))
+    )
+
+    # Tenta inserir o identificador
+    driver.find_element(By.XPATH, '//*[@id="idConsulta"]').clear()
+    driver.find_element(By.XPATH, '//*[@id="idConsulta"]').send_keys(identificador)
+    driver.find_element(By.XPATH, '/html/body/div[10]/form/div/input').click()
+
+    # Aguarda a descrição estar presente e visível
+    descricao_element = WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.XPATH, '//*[@id="respondeDemandaForm"]/table/tbody/tr[24]/td[2]'))
+    )
+
+    # Captura todo o texto contido no <td>
+    descricao = descricao_element.text
+    descricao = limpar_texto(descricao)
+
+    # Salva a descrição na coluna 'Descrição' do DataFrame
+    df.at[index, 'Descrição'] = descricao
+
+    if "Mensagem" in descricao and "---------- Final dos dados preenchidos pelo cidadão ----------" in descricao:
+        partes = descricao.split("Mensagem", 1)
+        relato = partes[1].split("---------- Final dos dados preenchidos pelo cidadão ----------", 1)[0]
+        relato_limpo = relato.strip()
+        df.at[index, 'Descrição'] = relato_limpo
+    elif "DEATI" in descricao:
+        partes = descricao.split("DEATI", 1)
+        df.at[index, 'Mensagem DEATI'] = limpar_texto(partes[1].strip())
+        df.at[index, 'Descrição'] = limpar_texto(partes[0].strip())
+    else:
+        df.at[index, 'Descrição'] = ""
+
+    # Retorna ao link inicial para processar a próxima demanda
+    driver.get("https://www3.bcb.gov.br/rdr/consultaDemandaIFView.do?method=consultaDemandaNumeroInicial")
+    WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+# Tratando a coluna Descrição
+# Condição: a coluna 'Descrição' é nula (isna) OU é uma string vazia ('')
+condicao = (df['Descrição'].isna()) | (df['Descrição'] == '')
+# Aplica a lógica: se a condição for verdadeira, usa 'Mensagem DEATI', senão, mantém 'Descrição'
+df['Descrição'] = np.where(condicao, df['Mensagem DEATI'], df['Descrição'])
+# Ecluíndo coluna Mensagem DEATI
+df = df.drop(columns=['Mensagem DEATI'], axis=1)
+# Salvar a planilha como "df_tratado"
+df.to_excel(r'C:\Users\u003985\Downloads\df_tratado.xlsx', index=False)
+
+print("Processo concluído e a nova planilha foi salva.")
+driver.quit()
