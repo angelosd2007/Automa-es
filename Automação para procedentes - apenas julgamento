@@ -1,0 +1,165 @@
+
+import pandas as pd
+import requests
+import getpass
+import os
+import time
+
+# Caminho do arquivo
+file_path = r'C:\Users\u003985\Downloads\IA_classificar_procedentes.xlsx'
+output_file_path = r'C:\Users\u003985\Downloads\procedentes_classificas_por_IA.xlsx'
+API_TOKEN = ""
+BASE_URL = "https://gepeto.svc.in.devneon.com.br/"
+
+# Função para definir o cabeçalho de autenticação
+def get_headers(token):
+    return {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+
+# Ler a planilha do Excel
+df = pd.read_excel(file_path)
+
+# Filtra somente registros com 'Descrição'
+df = df[df['Descrição'].notnull()]
+
+# Criar novas colunas para armazenar as respostas
+df['Causa Raiz'] = ''
+
+# Função para enviar uma mensagem e receber uma resposta da API
+def enviar_mensagem(mensagem):
+    payload = {
+        "model": "gpt-4o-mini",  
+        "messages": [
+            {"role": "system", "content": """Você é um especialista de Ouvidoria e melhoria contínua, focado na identificação de causa raiz de reclamações procedentes no Banco Central do Brasil (BACEN). Sua tarefa é analisar o JULGAMENTO da demanda pelo Banco Central e fornecer a causa raiz correspondente, selecionando uma e apenas uma opção da lista fornecida.
+
+## Instruções Detalhadas de Análise:
+1.  **Análise do Julgamento:** Leia atentamente o texto do BACEN. Foque nos trechos que começam com "Considerando:" e nas Resoluções citadas, pois eles contêm a justificativa principal.
+2.  **Identificação da Falha Principal:** Determine qual foi a falha central da instituição segundo o BACEN (ex: falta de prova de consentimento, falha na informação, bloqueio indevido, morosidade no atendimento, cobrança incorreta).
+3.  **Mapeamento para Causa Raiz:** Compare a falha principal identificada com a lista de "Causas Raízes Possíveis".
+4.  **Seleção e Resposta:** Selecione a causa raiz da lista que melhor e mais especificamente descreve a falha. Sua resposta final deve conter apenas o nome exato da causa raiz escolhida.
+
+## Exemplos de Aplicação:
+Exemplo 1:
+Julgamento:
+"Reclamação regulada procedente... Considerando que a ES não apresentou a prova da aquiescência do cliente com relação à autorização para o débito realizado..."
+Causa Raiz: Raspa Conta
+
+Exemplo 2:
+Julgamento:
+"Considerando: - o relato: '...aplica em um investimento que chama poupa fatura ... sem meu consentimento...'; - que a ES não esclarece/demonstra como se deu a contratação do produto nem como assegurou a ciência prévia inequívoca de seus termos e condições..."
+Causa Raiz: Adequação/Informação Produto
+
+###
+IMPORTANTE: Sua resposta deve ser apenas e tão somente o nome exato de uma das causas raízes da lista abaixo, sem nenhuma explicação ou texto adicional.
+
+Causas Raízes Possíveis:
+Adequação/Informação Produto
+Bloqueio Feedzai (ausência de comunicação)
+Bloqueio por MED
+Bloqueio por MED (ausência de comunicação)
+Bloqueio Preventivo
+Bloqueio Refaça
+Cancelamento de Produto/Serviço não efetuado
+Cobrança de Seguro após Cancelamento de Cartão
+Cobrança Indevida
+Contestação de Compra Online
+Contestação de Compras Por Aproximação
+Desconto Indevido
+Encargos Indevidos
+Falha Acesso App
+Falha App - Erro de Saldo
+Falha App - Pagamento de Fatura Duplicado
+Falha App - Resgate Antecipado
+Falha App - Resgate Após Vencimento
+Falha Ativação Cartão
+Falha Ativação do Crédito - Viracrédito
+Falha Atualização CCS - Conta Aplicações Financeiras
+Falha Atualização SCR
+Falha Atualização SCR (BV)
+Falha Cod. Encerramento de Conta
+Falha Compensação Acordo
+Falha Compensação Pagamento
+Falha Compensação Pix
+Falha Desbloqueio de Valores - MED
+Falha Emissão de Boleto
+Falha Entrega Cartão
+Falha Exclusão Serasa
+Falha Execução Garantia VC
+Falha Geração Cartão Após Vencimento
+Falha na Liberação de Margem Consignável
+Falha na Migração do Saldo MEI para PF
+Falha no Acompanhamento de Conta
+Falha no Atendimento
+Falha no Envio da Fatura
+Falha no Onboarding
+Falha no Processamento de Compra
+Falha no Reconhecimento Facial
+Falha pontos creditados a mais em Cashback
+Falha Saque ATM
+Falha Todo Mundo Erra
+Falha Viracrédito - Limite
+Fraude - Abertura de Conta
+Fornecimento de Documento
+Informação Sistêmica
+Intempestividade Abertura do MED
+Liquidação Antecipada Recusada - Periodo de Aviso Prévio
+Manutenção de Chave Pix Após Encerramento de Conta
+Melhoria de Subsídios
+Melhoria na Resposta
+Melhoria no Cadastro
+Morosidade Análise de Proposta Consig
+Morosidade Atendimento RITM
+Morosidade Baixa de Operação
+Morosidade Cancelamento de Compra
+Oportunidade de Recurso
+Parcelamento Compulsório
+Portabilidade Singulare
+Raspa Conta
+Redução de Limite sem Comunicação Prévia
+SLA de RITM não atendido
+Tarifa Inatividade da Conta
+Vazamento de Dados
+
+"""},
+            {"role": "user", "content": mensagem}
+        ]
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/api/chat/completions",
+        headers=get_headers(API_TOKEN),
+        json=payload
+    )
+
+    if response.status_code == 200:
+        resposta = response.json()
+        print("Processado", Identificador)
+        return resposta["choices"][0]["message"]["content"]
+    else:
+        print(f"Erro na requisição: {response.status_code} - {response.text}")
+        return None
+
+# Processar cada descrição
+for index, row in df.iterrows():
+    descricao = row['Descrição']
+    Identificador = row['Identificador']
+    
+    # Monta o prompt
+    prompt = f"""
+Leia as reclamações em {descricao} e classifique dentro das causas raízes possíveis.
+Responda da seguinte forma: Causa Raiz:
+"""
+
+    # Enviando a mensagem e recebendo a resposta
+    resposta = enviar_mensagem(prompt)
+    if resposta:
+        df.at[index, 'Causa Raiz'] = resposta.strip()
+        print(f" -> Causa Raiz identificada: {resposta.strip()}")
+        print('Aguardando 5 segundos para nova requisição')
+    time.sleep(5)
+
+# Salvar o resultado em uma nova planilha
+df.to_excel(output_file_path, index=False)
+print(f"Arquivo atualizado salvo em: {output_file_path}")
