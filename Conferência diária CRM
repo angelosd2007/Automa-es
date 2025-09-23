@@ -1,0 +1,185 @@
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+from datetime import datetime, timedelta
+import requests
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Configurações do caminho
+download_dir = r'c:\Users\u003985\Downloads' # Altere conforme seu diretório de downloads
+
+# Configuração do Slack
+slack_token = ''
+canal_slack = ''
+
+#Ativando WebClients
+client = WebClient(token=slack_token)
+
+# Análise com Pandas e Matplotlib
+# Carregar a planilha
+file_path = r'c:\Users\u003985\Downloads\Lista de Demandas - Todas (Todas).xlsx'
+df = pd.read_excel(file_path, header=3, engine='openpyxl')
+
+# Passo 2: Filtrar as colunas de interesse e renomear
+df = df[['Status', 'Canal Entrada', 'Identificador', 'Recebida', 'Prazo']]
+
+# Filtrar os dados pela coluna 'Status'
+status_interessados = ['Pendente', 'Aberto', 'Reaberto', 'Classificar']
+df = df[df['Status'].isin(status_interessados)]
+
+# Conversão das colunas 'Prazo' e 'Recebida' para datetime
+colunas_datas = ['Prazo', 'Recebida']
+
+for coluna in colunas_datas:
+    df[coluna] = pd.to_datetime(df[coluna], format='%d-%m-%Y %H:%M', errors='coerce')  # Extraindo apenas a data
+
+# Agora, extraindo somente a data (sem hora)
+for coluna in colunas_datas:
+    df[coluna] = df[coluna].dt.date  # Apenas a parte da data, retirando ou ignorando a hora
+
+# Análise - Demandas do dia atual e prazos próximos
+hoje = datetime.today().date()
+demandas = df['Prazo']
+demandas_total = df["Identificador"].count()
+demandas_dia = df[df['Recebida'] == hoje]
+demandas_prazo_proximo = df[df['Prazo'] == hoje]
+
+# Exibe as demandas do dia atual
+print(f"Demandas com data de entrada no dia de hoje ({hoje}):")
+print(demandas_dia)
+print(f"Soma de demandas do dia: {len(demandas_dia)}")  # Soma de protocolos
+
+# Exibe as demandas com prazos próximos
+print("Demandas com prazo de resposta até hoje:")
+print(demandas_prazo_proximo)
+print(f"Soma de demandas com prazo até hoje: {len(demandas_prazo_proximo)}")
+
+# Criar a tabela dinâmica
+tabela_pivot = pd.pivot_table(df, values='Identificador', index='Canal Entrada', 
+                               columns='Prazo', aggfunc='count', fill_value=0, 
+                               margins=True, margins_name='Total')
+
+# Gerar mensagem resumo_analise
+resumo_analise = f"""
+
+🛡 𝗖𝗼𝗻𝗳𝗲𝗿𝗲̂𝗻𝗰𝗶𝗮 𝗗𝗶𝗮́𝗿𝗶𝗮 𝗱𝗲 {hoje.strftime('%d/%m/%Y')} 🛡
+
+Em acompanhamento ao nosso controle diário, seguem dados de demandas para conferência:
+
+＊ 𝗧𝗼𝘁𝗮𝗹 𝗱𝗲 𝗱𝗲𝗺𝗮𝗻𝗱𝗮𝘀 𝗮𝗯𝗲𝗿𝘁𝗮𝘀 𝗰𝗼𝗺 𝗽𝗿𝗮𝘇𝗼 𝗛𝗼𝗷𝗲: {len(demandas_prazo_proximo)} 
+{"Demandas com prazo em D10 foram integralmente fechadas ✔" if len(demandas_prazo_proximo) == 0 else "⛔Verifique as demandas pendentes❗"}
+
+Próximos Prazos:
+"""
+
+# Inicializando a variável 'mensagem'
+mensagem = ""
+
+# Filtrar DataFrame para incluir apenas prazos futuros ou hoje
+df_futuras = df[df["Prazo"] >= hoje]
+
+for prazo, group in df_futuras.groupby("Prazo"):
+    # Contar o total de demandas para o prazo
+    total_demandas = group.shape[0]
+
+    # Contar demandas por canal
+    demanda_por_canal = group.groupby("Canal Entrada")["Identificador"].count()
+
+    # Adicionar cabeçalho para a data atual
+    mensagem += f"{prazo.strftime('%d/%m/%Y')} - Total demandas ({total_demandas}):\n"
+
+    # Adicionar dados dos canais com gráficos de barras
+    for canal, quantidade in demanda_por_canal.items():
+        barras = "█" * (quantidade // 1)  # Cada barra representa uma unidade
+        mensagem += f"  {canal:<15}: {barras} ({quantidade})\n"
+
+    mensagem += "\n"  # Linha em branco entre datas
+
+# Adicionar mensagem final
+mensagem += f"Total de demandas em aberto com prazos futuros: {demandas_total}\n\n"
+mensagem += "Conferência finalizada ✔\n\n" if len(demandas_prazo_proximo) == 0 else "❌Conferência em andamento. Verifique as demandas pendentes❗\n\n"
+mensagem += f"𝗢𝘂𝘃𝗶𝗱𝗼𝗿𝗶𝗮 𝗡𝗲𝗼𝗻\n𝗦𝗮̃𝗼 𝗣𝗮𝘂𝗹𝗼, {hoje.strftime('%d/%m/%Y')}\n"
+
+# Combinar mensagens
+resumo_analise += mensagem
+
+# Passo 5: Gerar gráficos
+
+# Gráfico 1: Soma de demandas por data de entrada
+demandas_por_data_entrada = df.groupby('Recebida').size()
+
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_por_data_entrada.index.map(lambda x: x.strftime('%d/%m/%Y')), 
+        demandas_por_data_entrada.values)
+plt.title('Soma de Demandas por Data de Entrada')
+plt.xlabel('Data de Entrada')
+plt.ylabel('Total de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_por_data_entrada):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Gráfico 2: Demandas futuras ordenadas por prazo de resposta
+demandas_futuras = df[df['Prazo'] >= hoje]
+demandas_futuras_ordenadas = demandas_futuras.groupby('Prazo').size()
+
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_futuras_ordenadas.index.map(lambda x: x.strftime('%d/%m/%Y')), demandas_futuras_ordenadas.values)
+plt.title('Demandas Futuras Ordenadas por Prazo de Resposta')
+plt.xlabel('Prazo de Resposta')
+plt.ylabel('Número de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_futuras_ordenadas):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Passo 6: Descrição da análise
+print("\nResumo da análise:")
+print(f"Total de demandas do dia atual ({hoje}): {len(demandas_dia)}")
+print(f"Total de demandas com prazo de resposta até hoje: {len(demandas_prazo_proximo)}")
+
+print(resumo_analise)
+
+# Função para enviar mensagem ao Slack
+def enviar_para_slack(mensagem, canal):
+    try:
+        response = client.chat_postMessage(channel=canal, text=mensagem)
+        print(f"Mensagem enviada para o Slack: {response['ts']}")
+    except SlackApiError as e:
+        print(f"Erro ao enviar mensagem para o Slack: {e.response['error']}")
+
+# Pedido de confirmação para o usuário
+confirmacao = input("\nDeseja enviar a conferência para o Slack? (s/n): ").strip().lower()
+
+if confirmacao == 's':
+    # Enviar resumo para o Slack
+    enviar_para_slack(resumo_analise, canal_slack)
+else:
+    print("\nEnvio ao Slack cancelado.")
+
+# Excluir o arquivo após a leitura e o envio
+exluir_arquivo = input ("\nDeseja exluir o arquivo da pasta download? (s/n): ").strip().lower()
+if exluir_arquivo == 's':
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"Arquivo {file_path} excluído com sucesso.")
+        else:
+            print(f"O arquivo {file_path} não existe.")
+    except Exception as e:
+        print(f"Erro ao tentar excluir o arquivo: {e}")
+else:
+    print("\nArquivo mantido.")
