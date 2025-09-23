@@ -122,7 +122,7 @@ driver.quit()
 # Caminho do arquivo
 file_path = r'C:\Users\u003985\Downloads\IA_classificar_procedentes.xlsx'
 output_file_path = r'C:\Users\u003985\Downloads\procedentes_classificas_por_IA.xlsx'
-API_TOKEN = "sk-9ff5338c1aad424da8b429b9901bcea4"
+API_TOKEN = ""
 BASE_URL = "https://gepeto.svc.in.devneon.com.br/"
 
 # Função para definir o cabeçalho de autenticação
