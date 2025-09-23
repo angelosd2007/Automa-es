@@ -1,0 +1,262 @@
+#Baixa e analisa demandas pendentes do BACEN
+#Deixar sempre a pasta downloand limpa - sem arquivos
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+from pykeepass import PyKeePass
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+from datetime import datetime, timedelta
+import getpass
+import os
+import time
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Configurações do caminho
+download_dir = r'C:\Users\u003985\Downloads'  # Altere conforme seu diretório de downloads
+
+# Configuração do Slack
+slack_token = ''
+canal_slack = ''
+
+client = WebClient(token=slack_token)
+
+# Função para esperar o download completar
+def wait_for_download(directory, timeout=60):
+    seconds = 0
+    downloaded = False
+    file_name = None
+    while not downloaded and seconds < timeout:
+        time.sleep(1)
+        files_after_download = [f for f in os.listdir(directory) if not f.endswith('.crdownload')]
+        if files_after_download:
+            file_name = files_after_download[0]  # Supõe-se o primeiro/único arquivo baixado
+        downloaded = bool(file_name)
+        seconds += 1
+    return file_name if downloaded else None
+
+# Acessando usuário e senha KeePass
+frase_segura = getpass.getpass("Digite sua senha KeePass: ")
+kp = PyKeePass(r'C:\Users\u003985\Documents\Consulta SCR\senhas.kdbx', password=frase_segura)
+
+# Pergunta qual empresa acessar
+empresa = input("Qual empresa deseja acessar? (1 para financeira, 2 para pagamentos): ")
+
+# Configurações do navegador
+chrome_options = Options()
+chrome_options.add_experimental_option("prefs", {
+    "download.default_directory": download_dir,
+    "download.prompt_for_download": False,  # Baixa automaticamente sem pedir para salvar
+    "download.directory_upgrade": True
+})
+
+#Acessando o site com webdrivre
+driver = webdriver.Chrome(options=chrome_options)
+driver.get("https://www3.bcb.gov.br/rdr/consultaDemandaIFDatasConglomerado.do?method=consultarDemandasPendentesConglomerado")
+
+#Função para esperar o site carregar
+WebDriverWait(driver, 10).until(lambda d: d.execute_script("return document.readyState") == "complete")
+
+# Encontra as credenciais
+if empresa == '1':
+    entry = kp.find_entries(title='Neon Financeira Bacen', first=True)
+else:
+    entry = kp.find_entries(title='Nome_da_Entrada_Pagamentos', first=True)
+
+if entry is None:
+    print("Entrada não encontrada no KeePass.")
+    driver.quit()
+    exit()
+
+username = entry.username
+password = entry.password
+
+# Insere o usuário e senha
+driver.find_element(By.XPATH, '//*[@id="userNameInput"]').send_keys(username)
+driver.find_element(By.XPATH, '//*[@id="passwordInput"]').send_keys(password)
+
+# Clica no botão de login
+driver.find_element(By.XPATH, '//*[@id="submitButton"]').click()
+
+# Clique nos próximos elementos conforme solicitado
+driver.find_element(By.XPATH, '//*[@id="oCMenu_MenuConglomerado"]').click()
+driver.find_element(By.XPATH, '//*[@id="oCMenu_ConsultarDemandasPendentes"]').click()
+
+# Clica no botão ordenar
+driver.find_element(By.XPATH, '//*[@id="ordenado"]').click()
+
+# Clica no botão final
+driver.find_element(By.XPATH, '//*[@id="pesquisaIFForm"]/input[4]').click()
+
+# Clica no botão de download
+driver.find_element(By.XPATH, '/html/body/div[10]/div/a[1]').click()
+
+# Esperar até que o download seja concluído e renomear
+downloaded_file = wait_for_download(download_dir)
+if downloaded_file:
+    print("Download completo!")
+    old_file_path = os.path.join(download_dir, downloaded_file)
+    new_file_path = os.path.join(download_dir, "Demandas_Pendentes" + os.path.splitext(downloaded_file)[1])
+    os.rename(old_file_path, new_file_path)
+    print(f"Arquivo renomeado para {new_file_path}")
+else:
+    print("O download não foi completado no tempo esperado.")
+    driver.quit()
+    exit()
+
+# Fecha o navegador após download
+driver.quit()
+
+# Análise com Pandas e Matplotlib
+# Passo 1: Carregar a planilha e especificar a linha de cabeçalho correta
+df = pd.read_excel(new_file_path, header=2)  # A linha 3 em índice 0-based equivale a header=2
+
+# Exiba as colunas carregadas para verificação
+print("Colunas carregadas:", df.columns)
+
+# Passo 2: Filtrar as colunas de interesse
+df = df[['Número', 'Disponibilização', 'Prazo', 'Instituição']]
+df.columns = ['Protocolo', 'Data Entrada', 'Prazo Resposta', 'Instituição']
+
+# Renomear 'Instituição' na coluna
+df['Instituição'] = df['Instituição'].str.strip().replace({
+    'NEON PAGAMENTOS S.A. - INSTITUIÇÃO DE PAGAMENTO': 'NEON PAGAMENTOS',
+    'NEON FINANCEIRA - CRÉDITO, FINANCIAMENTO E INVESTIMENTO S.A.': 'NEON FINANCEIRA'
+})
+
+# Converte as colunas de data para o formato datetime
+df['Data Entrada'] = pd.to_datetime(df['Data Entrada'], errors='coerce').dt.date  # Extraindo apenas a data
+df['Prazo Resposta'] = pd.to_datetime(df['Prazo Resposta'], errors='coerce').dt.date  # Extraindo apenas a data
+
+# Passo 3: Análise - Demandas com prazo próximo e demandas do dia atual
+hoje = datetime.today().date()
+demandas_total = df["Protocolo"].count()
+demandas_dia = df[df['Data Entrada'] == hoje]
+demandas_prazo_proximo = df[df['Prazo Resposta'] == hoje]
+demandas_prazo_d9 = df[df['Prazo Resposta'] == hoje + timedelta(days=1)]
+demandas_prazo_d8 = df[df['Prazo Resposta'] == hoje + timedelta(days=2)]
+
+# Exibe as demandas do dia atual
+print(f"Demandas com data de entrada no dia de hoje ({hoje}):")
+print(demandas_dia)
+print(f"Soma de demandas do dia: {len(demandas_dia)}")
+
+# Exibe as demandas com prazos próximos
+print("Demandas com prazo de resposta até hoje:")
+print(demandas_prazo_proximo)
+print(f"Soma de demandas com prazo até hoje: {len(demandas_prazo_proximo)}")
+
+# Agrupando demandas e contando total por "Prazo Resposta" e "Instituição"
+demandas_total_agrupado = df.groupby(["Prazo Resposta", "Instituição"])["Protocolo"].count().reset_index()
+
+# Gerar mensagem resumo_analise
+resumo_analise = f"""
+
+🏛 𝗖𝗼𝗻𝗳𝗲𝗿𝗲̂𝗻𝗰𝗶𝗮 𝗕𝗮𝗰𝗲𝗻 - {hoje.strftime('%d/%m/%Y')} 🏛
+
+Seguem dados de demandas para conferência:
+
+＊ 𝗧𝗼𝘁𝗮𝗹 𝗱𝗲 𝗱𝗲𝗺𝗮𝗻𝗱𝗮𝘀 𝗮𝗯𝗲𝗿𝘁𝗮𝘀 𝗰𝗼𝗺 𝗽𝗿𝗮𝘇𝗼 𝗛𝗼𝗷𝗲: {len(demandas_prazo_proximo)} 
+{"Demandas com prazo em D10 foram integralmente fechadas ✔" if len(demandas_prazo_proximo) == 0 else "Há demandas pendentes com prazo hoje❗"}
+
+＊ Total de demandas que entraram hoje: {len(demandas_dia)}
+
+Próximos Prazos:
+"""
+
+# Inicializando a variável 'mensagem'
+mensagem = ""
+
+# Iterar sobre grupos de demanda pelo "Prazo Resposta"
+for prazo, group in demandas_total_agrupado.groupby("Prazo Resposta"):
+    # Contar o total de demandas para o prazo
+    total_demandas = group["Protocolo"].sum()  # Total de protocolos para cada prazo
+
+    # Contar demandas por canal (instituição) usando count()
+    demanda_por_canal = group.groupby("Instituição")["Protocolo"].sum()
+
+    # Adicionar cabeçalho para a data atual
+    mensagem += f"{prazo.strftime('%d/%m/%Y')} - Total demandas ({total_demandas}):\n"
+
+    # Adicionar dados dos canais com gráficos de barras
+    for canal, quantidade in demanda_por_canal.items():
+        barras = "█" * quantidade  # Cada barra representa uma unidade
+        mensagem += f"  {canal:<15}: {barras} ({quantidade})\n"
+
+    mensagem += "\n"  # Linha em branco entre datas
+
+# Adicionar mensagem final
+mensagem += f"Total de demandas em aberto com prazos futuros: {demandas_total}\n\n"
+mensagem += "Conferência finalizada ✔\n\n" if len(demandas_prazo_proximo) == 0 else "Verifique as demandas pendentes com vencimento hoje❗\n\n"
+mensagem += f"𝗢𝘂𝘃𝗶𝗱𝗼𝗿𝗶𝗮 𝗡𝗲𝗼𝗻\n𝗦𝗮̃𝗼 𝗣𝗮𝘂𝗹𝗼, {hoje.strftime('%d/%m/%Y')}\n"
+
+# Combinar mensagens
+resumo_analise += mensagem
+
+# Passo 5: Gerar gráficos
+
+# Gráfico 1: Soma de demandas por data de entrada
+demandas_por_data_entrada = df.groupby('Data Entrada').size()
+
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_por_data_entrada.index.map(lambda x: x.strftime('%d/%m/%Y')), demandas_por_data_entrada.values)
+plt.title('Soma de Demandas por Data de Entrada')
+plt.xlabel('Data de Entrada')
+plt.ylabel('Total de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_por_data_entrada):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Gráfico 2: Demandas futuras ordenadas por prazo de resposta
+demandas_futuras = df[df['Prazo Resposta'] >= hoje]
+demandas_futuras_ordenadas = demandas_futuras.groupby('Prazo Resposta').size()
+
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_futuras_ordenadas.index.map(lambda x: x.strftime('%d/%m/%Y')), demandas_futuras_ordenadas.values)
+plt.title('Demandas Futuras Ordenadas por Prazo de Resposta')
+plt.xlabel('Prazo de Resposta')
+plt.ylabel('Número de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_futuras_ordenadas):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Passo 6: Descrição da análise
+print("\nResumo da análise:")
+print(f"Total de demandas do dia atual ({hoje}): {len(demandas_dia)}")
+print(f"Total de demandas com prazo de resposta até hoje: {len(demandas_prazo_proximo)}")
+
+print(resumo_analise)
+
+# Função para enviar mensagem ao Slack
+def enviar_para_slack(mensagem, canal):
+    try:
+        response = client.chat_postMessage(channel=canal, text=mensagem)
+        print(f"Mensagem enviada para o Slack: {response['ts']}")
+    except SlackApiError as e:
+        print(f"Erro ao enviar mensagem para o Slack: {e.response['error']}")
+
+# Pedido de confirmação para o usuário
+confirmacao = input("\nDeseja enviar a conferência para o Slack? (s/n): ").strip().lower()
+
+if confirmacao == 's':
+    # Enviar resumo para o Slack
+    enviar_para_slack(resumo_analise, canal_slack)
+else:
+    print("Envio ao Slack cancelado.")
