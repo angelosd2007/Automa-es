@@ -1,0 +1,154 @@
+# Análise de demandas pendentes do BACEN, assumindo que o arquivo já está baixado manualmente
+from slack_sdk import WebClient
+from slack_sdk.errors import SlackApiError
+from pykeepass import PyKeePass
+import pandas as pd
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import os
+
+# Configurações do caminho
+download_dir = r'C:\Users\u003985\Downloads'  # Altere conforme seu diretório de downloads
+arquivo_downloaded = "demandas.xlsx"  # Nome do arquivo que você baixou manualmente
+
+# Configuração do Slack
+slack_token = ''
+canal_slack = ''
+
+client = WebClient(token=slack_token)
+
+# Passo 1: Carregar a planilha e especificar a linha de cabeçalho correta
+file_path = os.path.join(download_dir, arquivo_downloaded)  # Caminho do arquivo
+df = pd.read_excel(file_path, header=2)  # A linha 3 em índice 0-based equivale a header=2
+
+# Exiba as colunas carregadas para verificação
+print("Colunas carregadas:", df.columns)
+
+# Passo 2: Filtrar as colunas de interesse
+df = df[['Número', 'Disponibilização', 'Prazo', 'Instituição']]
+df.columns = ['Protocolo', 'Data Entrada', 'Prazo Resposta', 'Instituição']
+
+# Renomear 'Instituição' na coluna
+df['Instituição'] = df['Instituição'].str.strip().replace({
+    'NEON PAGAMENTOS S.A. - INSTITUIÇÃO DE PAGAMENTO': 'NEON PAGAMENTOS',
+    'NEON FINANCEIRA - CRÉDITO, FINANCIAMENTO E INVESTIMENTO S.A.': 'NEON FINANCEIRA'
+})
+
+# Converte as colunas de data para o formato datetime
+df['Data Entrada'] = pd.to_datetime(df['Data Entrada'], errors='coerce').dt.date  # Extraindo apenas a data
+df['Prazo Resposta'] = pd.to_datetime(df['Prazo Resposta'], errors='coerce').dt.date  # Extraindo apenas a data
+
+# Passo 3: Análise - Demandas com prazo próximo e demandas do dia atual
+hoje = datetime.today().date()
+demandas_total = df["Protocolo"].count()
+demandas_dia = df[df['Data Entrada'] == hoje]
+demandas_prazo_proximo = df[df['Prazo Resposta'] == hoje]
+demandas_prazo_d9 = df[df['Prazo Resposta'] == hoje + timedelta(days=1)]
+demandas_prazo_d8 = df[df['Prazo Resposta'] == hoje + timedelta(days=2)]
+
+# Exibe as demandas do dia atual
+print(f"Demandas com data de entrada no dia de hoje ({hoje}):")
+print(demandas_dia)
+print(f"Soma de demandas do dia: {len(demandas_dia)}")
+
+# Exibe as demandas com prazos próximos
+print("Demandas com prazo de resposta até hoje:")
+print(demandas_prazo_proximo)
+print(f"Soma de demandas com prazo até hoje: {len(demandas_prazo_proximo)}")
+
+# Agrupando demandas e contando total por "Prazo Resposta" e "Instituição"
+demandas_total_agrupado = df.groupby(["Prazo Resposta", "Instituição"])["Protocolo"].count().reset_index()
+
+# Gerar mensagem resumo_analise
+resumo_analise = f"""
+🏛 𝗖𝗼𝗻𝗳𝗲𝗿𝗲̂𝗻𝗰𝗶𝗮 𝗕𝗮𝗰𝗲𝗻 - {hoje.strftime('%d/%m/%Y')} 🏛
+Seguem dados de demandas para conferência:
+＊ 𝗧𝗼𝘁𝗮𝗹 𝗱𝗲 𝗱𝗲𝗺𝗮𝗻𝗱𝗮𝘀 𝗮𝗯𝗲𝗿𝘁𝗮𝘀 𝗰𝗼𝗺 𝗽𝗿𝗮𝘇𝗼 𝗛𝗼𝗷𝗲: {len(demandas_prazo_proximo)} 
+{"Demandas com prazo em D10 foram integralmente fechadas ✔" if len(demandas_prazo_proximo) == 0 else "Há demandas pendentes com prazo hoje❗"}
+＊ Total de demandas que entraram hoje: {len(demandas_dia)}
+Próximos Prazos:
+"""
+
+# Inicializando a variável 'mensagem'
+mensagem = ""
+
+# Iterar sobre grupos de demanda pelo "Prazo Resposta"
+for prazo, group in demandas_total_agrupado.groupby("Prazo Resposta"):
+    total_demandas = group["Protocolo"].sum()  # Total de protocolos para cada prazo
+    demanda_por_canal = group.groupby("Instituição")["Protocolo"].sum()
+    
+    mensagem += f"{prazo.strftime('%d/%m/%Y')} - Total demandas ({total_demandas}):\n"
+    
+    for canal, quantidade in demanda_por_canal.items():
+        barras = "█" * quantidade  # Cada barra representa uma unidade
+        mensagem += f"  {canal:<15}: {barras} ({quantidade})\n"
+    
+    mensagem += "\n"  # Linha em branco entre datas
+
+# Adicionar mensagem final
+mensagem += f"Total de demandas em aberto com prazos futuros: {demandas_total}\n\n"
+mensagem += "Conferência finalizada ✔\n\n" if len(demandas_prazo_proximo) == 0 else "Verifique as demandas pendentes com vencimento hoje❗\n\n"
+mensagem += f"𝗢𝘂𝘃𝗶𝗱𝗼𝗿𝗶𝗮 𝗡𝗲𝗼𝗻\n𝗦𝗮̃𝗼 𝗣𝗮𝘂𝗹𝗼, {hoje.strftime('%d/%m/%Y')}\n"
+
+# Combinar mensagens
+resumo_analise += mensagem
+
+# Passo 5: Gerar gráficos
+# Gráfico 1: Soma de demandas por data de entrada
+demandas_por_data_entrada = df.groupby('Data Entrada').size()
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_por_data_entrada.index.map(lambda x: x.strftime('%d/%m/%Y')), demandas_por_data_entrada.values)
+plt.title('Soma de Demandas por Data de Entrada')
+plt.xlabel('Data de Entrada')
+plt.ylabel('Total de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_por_data_entrada):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Gráfico 2: Demandas futuras ordenadas por prazo de resposta
+demandas_futuras = df[df['Prazo Resposta'] >= hoje]
+demandas_futuras_ordenadas = demandas_futuras.groupby('Prazo Resposta').size()
+plt.figure(figsize=(10, 6))
+plt.bar(demandas_futuras_ordenadas.index.map(lambda x: x.strftime('%d/%m/%Y')), demandas_futuras_ordenadas.values)
+plt.title('Demandas Futuras Ordenadas por Prazo de Resposta')
+plt.xlabel('Prazo de Resposta')
+plt.ylabel('Número de Demandas')
+plt.xticks(rotation=45)
+plt.tight_layout()
+
+# Adicionar rótulos de dados
+for i, v in enumerate(demandas_futuras_ordenadas):
+    plt.text(i, v + 0.5, str(v), ha='center', va='bottom')
+
+plt.show(block=False)
+plt.pause(3)
+plt.close()
+
+# Passo 6: Descrição da análise
+print("\nResumo da análise:")
+print(f"Total de demandas do dia atual ({hoje}): {len(demandas_dia)}")
+print(f"Total de demandas com prazo de resposta até hoje: {len(demandas_prazo_proximo)}")
+print(resumo_analise)
+
+# Função para enviar mensagem ao Slack
+def enviar_para_slack(mensagem, canal):
+    try:
+        response = client.chat_postMessage(channel=canal, text=mensagem)
+        print(f"Mensagem enviada para o Slack: {response['ts']}")
+    except SlackApiError as e:
+        print(f"Erro ao enviar mensagem para o Slack: {e.response['error']}")
+
+# Pedido de confirmação para o usuário
+confirmacao = input("\nDeseja enviar a conferência para o Slack? (s/n): ").strip().lower()
+if confirmacao == 's':
+    # Enviar resumo para o Slack
+    enviar_para_slack(resumo_analise, canal_slack)
+else:
+    print("Envio ao Slack cancelado.")
