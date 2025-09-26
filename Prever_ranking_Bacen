@@ -1,0 +1,179 @@
+import pandas as pd
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# --- ETAPA 0: Seleção da Instituição Alvo ---
+instituicao_alvo = input("Para qual instituição você deseja fornecer dados detalhados para a projeção? ")
+print(f"Instituição alvo selecionada: {instituicao_alvo}")
+# 
+
+# --- ETAPA 1: Carregar e Preparar os Dados ---
+try:
+    df = pd.read_excel(r'C:\Users\u003985\Downloads\df_ranking.xlsx')
+    print("Arquivo 'df_ranking.xlsx' carregado com sucesso.")
+except FileNotFoundError:
+    print("ERRO: O arquivo 'df_ranking.xlsx' não foi encontrado no caminho especificado.")
+    exit()
+
+# --- ETAPA 2: Limpeza e Preparação dos Dados ---
+# Renomeando colunas para um padrão consistente. AJUSTE OS NOMES À ESQUERDA se necessário.
+df.rename(columns={
+    'Instituição Financeira': 'Instituicao',
+    'Índice': 'Indice',
+    'Reclamações reguladas procedentes': 'N_Reclamacoes',
+    'Clientes': 'Clientes',
+    'Ano': 'Ano',
+    'Trimestre': 'Tri' # Garanta que a coluna de trimestre exista e seja renomeada
+}, inplace=True)
+
+# Criando um índice de tempo numérico e contínuo para a regressão
+# Ex: (2024, 1) -> 1, (2024, 2) -> 2, (2025, 1) -> 5
+df = df.sort_values(by=['Ano', 'Tri']).reset_index(drop=True)
+min_ano = df['Ano'].min()
+df['Time_Index'] = (df['Ano'] - min_ano) * 4 + df['Tri']
+
+
+# --- ETAPA 3: Input de Dados da Instituição Alvo e Análise de Mercado ---
+print(f"\nPor favor, insira os dados do último trimestre CONHECIDO de '{instituicao_alvo}':")
+clientes_alvo = float(input("- Base de clientes: "))
+procedentes_alvo = float(input("- Quantidade de reclamações procedentes: "))
+demandas_respondidas_alvo = float(input("- Quantidade de demandas respondidas (N): "))
+casos_analisados_alvo = float(input("- Quantidade de casos analisados pelo BACEN: "))
+
+if casos_analisados_alvo > 0:
+    p_alvo = procedentes_alvo / casos_analisados_alvo
+else:
+    p_alvo = 0
+
+# Regressão para encontrar o 'p' médio do mercado (esta parte não muda)
+df['Indice_Base'] = (df['N_Reclamacoes'] * 1000000) / df['Clientes']
+model = LinearRegression()
+model.fit(df[['Indice_Base']], df['Indice'])
+p_mercado_medio = model.coef_[0]
+
+print(f"\nO 'p' real de '{instituicao_alvo}' é: {p_alvo:.4f}")
+print(f"O 'p' médio do mercado é: {p_mercado_medio:.4f}\n")
+
+# --- ETAPA 4: Previsão dos Inputs para o Próximo Trimestre (NOVA ETAPA) ---
+
+# 4.1. Função para prever o próximo valor de uma série temporal com Regressão Linear
+def forecast_next_value(df_historico, value_column, time_column):
+    """
+    Recebe o histórico de uma instituição e prevê o próximo valor de uma coluna.
+    """
+    if df_historico.shape[0] < 2:
+        # Se não há histórico suficiente, assume que o valor se repetirá (previsão ingênua)
+        return df_historico[value_column].iloc[0]
+
+    X = df_historico[[time_column]]
+    y = df_historico[value_column]
+    
+    model_ts = LinearRegression()
+    model_ts.fit(X, y)
+    
+    proximo_time_index = X[time_column].max() + 1
+    previsao = model_ts.predict([[proximo_time_index]])
+    
+    # Garante que a previsão não seja negativa
+    return max(0, previsao[0])
+
+# 4.2. Iterar sobre cada instituição para prever seus inputs
+instituicoes = df['Instituicao'].unique()
+previsoes_futuras = []
+
+print("--- Iniciando a previsão dos inputs para o próximo trimestre ---")
+for inst in instituicoes:
+    df_inst = df[df['Instituicao'] == inst]
+    
+    # Prever N_Reclamacoes e Clientes para o próximo trimestre
+    n_reclamacoes_previsto = forecast_next_value(df_inst, 'N_Reclamacoes', 'Time_Index')
+    clientes_previsto = forecast_next_value(df_inst, 'Clientes', 'Time_Index')
+    
+    previsoes_futuras.append({
+        'Instituicao': inst,
+        'N_Reclamacoes_Previsto': n_reclamacoes_previsto,
+        'Clientes_Previsto': clientes_previsto
+    })
+
+# Criar um novo DataFrame com os inputs projetados
+df_projetado = pd.DataFrame(previsoes_futuras)
+print("Previsão dos inputs concluída.")
+
+# --- ETAPA 4.3: Ajuste Fino para a Instituição Alvo com Dados Reais ---
+print(f"\n--- Ajustando a projeção de '{instituicao_alvo}' para usar os dados mais recentes fornecidos ---")
+
+# Converte o nome da instituição alvo para maiúsculas para uma comparação robusta
+instituicao_alvo_upper = instituicao_alvo.upper()
+
+# Encontra o índice da linha correspondente à instituição alvo
+alvo_index = df_projetado[df_projetado['Instituicao'].str.upper().str.contains(instituicao_alvo_upper)].index
+
+if not alvo_index.empty:
+    # Substitui os valores PREVISTOS pelos valores REAIS fornecidos pelo usuário
+    df_projetado.loc[alvo_index, 'N_Reclamacoes_Previsto'] = demandas_respondidas_alvo
+    df_projetado.loc[alvo_index, 'Clientes_Previsto'] = clientes_alvo
+    
+    print(f"Nº de Reclamações de '{instituicao_alvo}' ajustado para: {demandas_respondidas_alvo}")
+    print(f"Nº de Clientes de '{instituicao_alvo}' ajustado para: {clientes_alvo}")
+    print("Ajuste concluído. O cálculo do índice final usará esses valores.")
+else:
+    print(f"AVISO: A instituição '{instituicao_alvo}' não foi encontrada no histórico para o ajuste.")
+# NOVO CÓDIGO A SER ADICIONADO ABAIXO
+# --------------------------------------------------------------------------------------
+# --- ETAPA 4.4: Filtrar para o Top 15 por Clientes ---
+print("\n--- Filtrando para as 15 instituições com maior base de clientes projetada ---")
+
+# Ordena o DataFrame pela quantidade de clientes projetada e pega os nomes das 15 maiores
+top_15_institutions = df_projetado.sort_values(by='Clientes_Previsto', ascending=False).head(15)['Instituicao'].tolist()
+
+# Filtra o DataFrame principal para conter apenas essas 15 instituições
+# O restante do script irá operar apenas com este subconjunto de dados
+df_projetado = df_projetado[df_projetado['Instituicao'].isin(top_15_institutions)]
+
+print("Projeção focada no Top 15 por base de clientes.")
+# --------------------------------------------------------------------------------------
+
+# --- ETAPA 5: Calcular o Índice Projetado e Gerar o Ranking Final ---
+
+# 5.1. Função para calcular o índice final usando os dados projetados
+def calcular_indice_projetado(row):
+    n_reclamacoes = row['N_Reclamacoes_Previsto']
+    clientes = row['Clientes_Previsto']
+    
+    # Usa o p_alvo para a instituição escolhida e o p_mercado_medio para as demais
+    # A comparação é feita em maiúsculas para evitar erros de digitação (ex: Itau vs itau)
+    if instituicao_alvo_upper in row['Instituicao'].upper():
+        p_usado = p_alvo
+    else:
+        p_usado = p_mercado_medio
+
+    if clientes == 0:
+        return np.inf 
+
+    eep_estimado = p_usado * n_reclamacoes
+    indice_previsto = (eep_estimado * 1000000) / clientes
+    return indice_previsto
+
+# 5.2. Aplicar a função ao DataFrame projetado
+df_projetado['Indice_Projetado'] = df_projetado.apply(calcular_indice_projetado, axis=1)
+
+# 5.3. Gerar e exibir o ranking final
+df_ranking_final = df_projetado.sort_values(by='Indice_Projetado', ascending=False)
+df_ranking_final = df_ranking_final.reset_index(drop=True)
+df_ranking_final['Ranking_Projetado'] = df_ranking_final.index + 1
+df_ranking_final = df_ranking_final[['Ranking_Projetado', 'Instituicao', 'Indice_Projetado']]
+
+# Identificando o próximo período para o título do ranking
+ano_recente = df['Ano'].max()
+tri_recente = df[df['Ano'] == ano_recente]['Tri'].max()
+proximo_tri = tri_recente + 1
+proximo_ano = ano_recente
+if proximo_tri > 4:
+    proximo_tri = 1
+    proximo_ano += 1
+
+print(f"\n--- Ranking Projetado para o {int(proximo_tri)}º Trimestre de {int(proximo_ano)} ---")
+print(df_ranking_final.round(2).to_string())
+
+
+input("\nPressione Enter para fechar a janela...")
