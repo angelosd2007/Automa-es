@@ -1,4 +1,8 @@
 # Automação de consulta SCR Bacen 4.0
+
+# 1. REMOÇÃO: A linha 'from pykeepass import PyKeePass' foi removida.
+# from pykeepass import PyKeePass 
+
 from selenium import webdriver
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.by import By
@@ -9,15 +13,48 @@ import os
 
 from datetime import datetime, timedelta
 
-import getpass
+import getpass # Mantemos esta importação para pedir a senha de forma segura
 import time
 
-# Pede usuário e senha do BACEN
+# --- INÍCIO DO BLOCO DE AUTENTICAÇÃO MODIFICADO ---
 
-user = input('Digite seu usuário do SCR/BC: ').strip()
-senha = getpass.getpass('Digite sua senha de acesso ao SCR/BC: ').strip()
+print("--- Autenticação BACEN ---")
 
-# Function para produzir as datas-base
+# Mantemos a seleção do sistema para usar no nome do arquivo final
+try:
+    sistema = int(input('Qual empresa dejesa acessar no SCR? 1 = Financeira ou 2 = Pagamentos: '))
+except ValueError:
+    print("Entrada inválida. Por favor, digite 1 ou 2.")
+    exit()
+
+system = "" # Inicializa a variável
+user = ""
+senha = ""
+
+# A lógica para definir 'system' (NF ou NP) foi mantida
+if sistema == 1:
+    system = "NF"
+    print("Selecionado: Neon Financeira (NF)")
+elif sistema == 2:
+    system = "NP"
+    print("Selecionado: Neon Pagamentos (NP)")
+else:
+    print("Opção inválida. A sair do programa.")
+    exit() # Adicionando uma saída para evitar erros
+
+# Pedimos o usuário e senha diretamente ao utilizador
+# O 'input()' mostra o que é digitado (bom para o utilizador)
+user = input(f"Digite o usuário Bacen para ({system}): ") 
+
+# O 'getpass.getpass()' oculta a digitação (bom para a senha)
+senha = getpass.getpass(f"Digite a senha Bacen para ({system}): ")
+
+print("Credenciais inseridas. A iniciar a automação...")
+
+# --- FIM DO BLOCO DE AUTENTICAÇÃO MODIFICADO ---
+
+
+# Function para produzir as datas-base (Código original mantido)
 def gerar_datas_base(data_str):
     data = datetime.strptime(data_str, "%m/%Y")
     datas_base = [data_str]
@@ -38,9 +75,22 @@ cliente = input('Digite o cpf/cnpj do cliente com ou sem pontuação: ')
 
 cliente = cliente.replace(".","").replace("-","")
 
-data_str = input("Insira a data base mais nova disponível para consulta no SCR no formato mm/AAAA: ")
+# Corrigindo o formato de entrada da data para mm/AAAA (ex: 01/2024)
+data_str = input("Insira a data base mais nova (mm/AAAA): ")
 
-datas_base = gerar_datas_base(data_str)
+# Ajustando a formatação da data para corresponder ao formato do site (mm/YYYY)
+try:
+    # Tenta converter a entrada para garantir que está correta
+    data_obj = datetime.strptime(data_str, "%m/%Y")
+    # Formata de volta para string, caso o utilizador tenha digitado "1/2024" em vez de "01/2024"
+    data_str_formatada = data_obj.strftime("%m/%Y") 
+    print(f"Data base inicial: {data_str_formatada}")
+except ValueError:
+    print("Formato de data inválido. Use mm/AAAA (ex: 05/2024). A sair.")
+    exit()
+
+
+datas_base = gerar_datas_base(data_str_formatada)
 
 # Inicialize o driver do navegador (neste caso, Chrome)
 
@@ -54,6 +104,7 @@ driver.get('https://scr.bcb.gov.br/scr/consulta')
 
 time.sleep(1)
 
+# As variáveis 'user' e 'senha' agora vêm dos inputs que criámos
 username_field = driver.find_element(By.ID, 'userNameInput')
 username_field.send_keys(user)
 
@@ -64,7 +115,7 @@ button_login = driver.find_element(By.ID, 'submitButton')
 button_login.click()
 
 for data in datas_base:
-    print(data) 
+    print(f"A processar data: {data}") 
     # Utilizando WebDriverWait para garantir que o campo CNPJ/CPF Cliente esteja presente
     try:
         # Preencha o campo CNPJ/CPF Cliente
@@ -72,6 +123,7 @@ for data in datas_base:
             EC.presence_of_element_located((By.ID, 'codigoCliente'))
         )
         cpf_field = driver.find_element(By.ID, 'codigoCliente')
+        cpf_field.clear() # Limpa o campo antes de inserir (boa prática)
         cpf_field.send_keys(cliente)
 
         # Selecione o tipo de cliente
@@ -102,24 +154,47 @@ for data in datas_base:
             os.makedirs(cliente)
     except Exception as e:
         print(f"Ocorreu um erro ao processar a data {data}: {e}")
-        break  # Ou continue com a lógica necessária.
+        # Se falhar no login (por ex, senha errada), esperamos aqui para ver o erro
+        if "submitButton" in driver.page_source:
+             print("Falha no login. Verifique as credenciais ou a página do Bacen.")
+        break  # Sai do loop de datas se houver um erro na página
 
     try:
-        elemento = EC.text_to_be_present_in_element((By.CSS_SELECTOR, "td.aesquerda"), "Não foram encontrados dados para o cliente, para os critérios abaixo relacionados")
-        if elemento:
-            time.sleep(0.5)
-            sufixo = '_financeira' if system == 'NF' else '_pagamentos'
-            driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}.png')
-            driver.find_element(By.NAME,'botaoVoltar').click()
+        # Verifica se aparece a mensagem "Não foram encontrados dados"
+        WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Não foram encontrados dados')]"))
+        )
+        print(f"  -> Dados não encontrados para {data}.")
+        sufixo = '_financeira' if system == 'NF' else '_pagamentos'
+        driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}_sem_dados.png')
+        driver.find_element(By.NAME,'botaoVoltar').click()
     
     except:
-        time.sleep(0.5)
-        link = driver.find_element(By.LINK_TEXT, 'Histórico das datas-base')
-        link.click()
-        time.sleep(0.5)
-        sufixo = '_financeira' if system == 'NF' else '_pagamentos'
-        driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}.png')
-        break
-        # driver.find_element(By.NAME,'voltar').click()
+        # Se não encontrar a mensagem acima, assume que encontrou dados
+        try:
+            print(f"  -> Dados ENCONTRADOS para {data}.")
+            # Espera pelo link "Histórico das datas-base" para garantir que a página carregou
+            WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((By.LINK_TEXT, 'Histórico das datas-base'))
+            )
+            
+            sufixo = '_financeira' if system == 'NF' else '_pagamentos'
+            driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}_DADOS.png')
+            
+            # Clica no link para voltar (parece ser a lógica que tinhas)
+            driver.find_element(By.LINK_TEXT, 'Histórico das datas-base').click()
+            
+            # NOTA: O 'break' original parava a automação após o primeiro sucesso.
+            # Removi o 'break' para que ele tente consultar os 24 meses.
+            # Se quiseres que pare após o primeiro mês com dados, descomenta a linha abaixo:
+            # break 
+        
+        except Exception as e_dados:
+            print(f"  -> Erro inesperado ao tentar capturar dados: {e_dados}")
+            driver.save_screenshot(f'{cliente}/{cliente}_{sufixo}_{data_formatada}_ERRO.png')
+            driver.get('https://scr.bcb.gov.br/scr/consulta') # Tenta voltar à página inicial
 
-input("Aperte enter")
+
+print("Processo de consulta finalizado.")
+input("Aperte Enter para fechar o navegador...")
+driver.quit()
